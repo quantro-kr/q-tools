@@ -49,6 +49,7 @@ def fetch_klines(symbol, startTime: datetime, endTime: datetime = None, interval
 
     next = startTime
 
+    print(f'Start downloading {symbol}...')
     while next.timestamp() <= endTime.timestamp():
         resp = requests.get(endpoint, params=params)
         result = json.loads(resp.text)
@@ -58,7 +59,7 @@ def fetch_klines(symbol, startTime: datetime, endTime: datetime = None, interval
         if "code" in result:
             print("retry...", result)
             sleep(10)
-        else:
+        elif result:
             for it in result:
                 current = ts2dt(it[0])
                 if current.timestamp() > endTime.timestamp():
@@ -66,6 +67,8 @@ def fetch_klines(symbol, startTime: datetime, endTime: datetime = None, interval
                 yield it
             next = current + pd.Timedelta(interval)
             params['startTime'] = dt2ts(next)
+        else:
+            print(f"skip as no data")
 
 
 def spot_klines(symbol, interval='1d', startTime: datetime = None, endTime: datetime = None, limit=500, debug=True):
@@ -82,11 +85,11 @@ class Main(object):
 
     실행 :
 
-    python scripts/get-binance.py download_csv --market=futures --symbol=btcusdt --interval=1d start_time=2020-01-01 end_time=2021-01-31 --out=download
-        => 2020-2021 년 사이의 BTCUSDT 선물 일봉 데이터를 download/futures/1d/BTCUSDT.csv 에 저장
+    python scripts/get_binance.py download_csv --market=futures --symbol=btcusdt --interval=1d --start_time=2021-01-01 --out=download
+        => 2020년 부터 오늘까지의 BTCUSDT 선물 일봉 데이터를 download/futures/1d/BTCUSDT.csv 에 저장
 
-    python scripts/get-binance.py download_csv --market=futures --symbol=all --interval=1d start_time=2020-01-01 end_time=2021-01-31 --out=download
-        => 2020-2021 년 사이의 모든 USDT 선물의 일봉 데이터를 download/futures/1d/*.csv 에 저장
+    python scripts/get_binance.py download_csv --market=futures --symbol=all --interval=1d --start_time=2021-01-01 --end_time=2021-01-31 --out=download
+        => 2021 년 사이의 모든 USDT 선물의 일봉 데이터를 download/futures/1d/*.csv 에 저장
     """
 
     @staticmethod
@@ -106,7 +109,7 @@ class Main(object):
         market = market.lower()
 
         if symbol == 'ALL':
-            for symbol in Main.get_symbols(market, currency):
+            for symbol in Main._get_symbols(market, currency):
                 Main._download_csv(symbol, start_time, end_time, interval, out, market)
         else:
             Main._download_csv(symbol, start_time, end_time, interval, out, market)
@@ -166,8 +169,12 @@ class Main(object):
             url = 'https://fapi.binance.com/fapi/v1/exchangeInfo'
         else:
             url = 'https://api.binance.com/api/v3/exchangeInfo'
-        symbols = json.loads(requests.get(url).text)['symbols']
-        return [it for it in symbols if it['symbol'].endswith(currency)]
+        result = json.loads(requests.get(url).text)
+        if 'symbols' not in result:
+            print('error: result=',result)
+            return []
+        symbols = result['symbols']
+        return [it['symbol'] for it in symbols if it['symbol'].endswith(currency)]
 
 
 if __name__ == '__main__':
